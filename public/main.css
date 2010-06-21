@@ -1,0 +1,158 @@
+/** 
+ *	Sticky Footer Solution
+ *	by Steve Hatcher 
+ *	http://stever.ca
+ *	http://www.cssstickyfooter.com
+ **/
+
+* {
+	margin:0;
+	padding:0;
+} 
+
+/* must declare 0 margins on everything, also for main layout components use padding, not 
+vertical margins (top and bottom) to add spacing, else those margins get added to total height 
+and your footer gets pushed down a bit more, creating vertical scroll bars in the browser */
+
+html, body {
+	height: 100%;
+	font-family: Tahoma,Verdana,Arial,Helvetica,"Bitstream Vera Sans",sans-serif;
+	font-size: 0.9em;
+}
+
+#wrap {
+	min-height: 100%;
+}
+
+#main {
+	overflow:auto;
+	padding-bottom: 40px;
+}  /* must be same height as the footer */
+
+#header {
+	height: 40px;
+	margin-bottom: 2.5em;
+	background-color: #dddddd;
+}
+
+#header h1 {
+	float: left;
+	padding-left: 30px;
+}
+#nav {
+	float: right;
+	padding-top: 10px;
+	padding-right: 15px;
+}
+
+#content {
+	padding-left: 40px;
+}
+
+#form li, #nav li, #searches li {
+    list-style: none;
+}
+
+#footer {
+	position: relative;
+	margin-top: -40px; /* negative value of footer height */
+	height: 40px;
+	clear:both;
+	background-color: #dddddd;
+} 
+
+#footer div {
+	padding-top: 10px;
+	padding-left: 30px;
+}
+
+/*Opera Fix*/
+body:before { /* thanks to Maleika (Kohoutec)*/
+	content:"";
+	height:100%;
+	float:left;
+	width:0;
+	margin-top:-32767px; /* thank you Erik J - negate effect of float*/
+}
+
+#searches ul {
+	width: 500px;
+}
+
+#searches li {
+	width: 500px;
+	border-bottom: 1px dashed #dddddd;
+	margin-bottom: 5px;
+	margin-top: 5px;
+}
+
+#searches li.extra-padding {
+	margin-bottom: 30px;
+}
+span.search-summary {
+
+}
+span.edit-links {
+	padding-left: 40px;
+}
+span.rss-link {
+
+}
+
+
+h2 {
+	padding-bottom: 10px;
+}
+.search-type {
+	position: relative;
+	float: left;
+	width: 100px;
+}
+.search-data {
+	margin-left: 60px;
+	position: relative;
+	float: left;
+}
+.search-refresh {
+	margin-left: 60px;
+	position: relative;
+	float: left;
+}
+.search-submit {
+	margin-left: 60px;
+	position: relative;
+	float: left;
+}
+
+.search-type h3, .search-data h3, .search-refresh h3, .search-submit h3 {
+	margin-bottom: 8px;
+}
+
+span.rss-link {
+	position: relative;
+	float: left;
+	width: 25px;
+}
+span.search-summary {
+	position: relative;
+	width: 300px;
+	float: left;
+	margin-left: 10px;
+}
+span.edit-links {
+	position: relative;
+	float: left;
+	margin-left: 30px;
+}
+
+#about p {
+	width: 500px;
+	font-size: 110%;
+	line-height: 120%;
+	margin-bottom: 20px;
+}
+#about ul {
+	padding-left: 45px;
+	line-height: 120%;
+	margin-bottom: 20px;
+}

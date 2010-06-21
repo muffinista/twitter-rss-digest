@@ -1,0 +1,46 @@
+<h2>About</h2>
+<div id="about">
+  <p>WhalePail is a simple app to generate RSS feeds for a variety of
+	Twtitter data.  You plug in a few parameters, and get back an RSS
+	feed, which you can then check whenever you want.  The feed is in
+	digest form, meaning that each entry will be a day's worth of
+	tweets, instead of getting one post per tweet.  This is handy
+	if there's someone or something you want to follow on Twitter, but
+	the standard methods of using Twitter aren't working for you.
+  </p>
+
+  <p>To get started, you will need to authorize WhalePail to query
+  Twitter with your account credentials.  This will just take a second
+  and then you will be sent back here.  We will never collect any
+  information about your account.
+  </p>
+
+  <p>Once that's done, you can setup some searches.  You can setup:</p>
+	<ul>
+	  <li><em>Tweets</em> from a specified user</li>
+	  <li><em>Mentions</em> of a user</li>
+	  <li><em>Replies</em> to a user</li>
+	  <li>or, you can <em>Search</em> for any phrase in tweets</li>
+	</ul>
+
+
+  <p>We allow you to specify how often you would like to update the
+  search.  It can be as quickly as every hour, or just once a day</p>
+
+  <p>When your search is created, it will be added to a list of
+  existing searches.  You can get the RSS feed for any of them, or use
+  the 'unified' RSS feed to get all of your searches at once</p>
+
+  <% if @user.nil? %>
+	<p>If you'd like to give it a try, you can get started by clicking
+	the button below:</p>
+
+	<div id="connect_button">
+      <a href="/connect"><img src="sign_in_with_twitter.gif" border="0" /></a>
+	</div>
+  <% end %>
+
+  <p>You can learn more about the technical details and see the code
+	<a href="/code">here</a></p>
+</div>
+

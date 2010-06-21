@@ -1,0 +1,16 @@
+== About
+
+WhalePail is a simple app to generate RSS feeds for a variety of
+Twitter data.  You plug in a few parameters, and get back an RSS
+feed, which you can then check whenever you want.  This is handy
+if there's someone or something you want to follow on Twitter, but
+the standard methods of using Twitter aren't working for you.
+
+To run the code on your own server, you will need to:
+
+* install the code somewhere
+* setup an app on twitter
+* specify the parameters you need to get OAuth working
+
+More to come...
+

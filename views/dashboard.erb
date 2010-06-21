@@ -1,0 +1,96 @@
+<% if @search %>
+  <h2>Update search:</h2>
+<% else %>
+  <h2>Create a search:</h2>
+<% end %>
+
+<div id="form">
+  <% if @search %>
+	<form action='/update' method="POST">
+	  <input type="hidden" name="id" value="<%= @search.id %>" />
+	<% else %>
+	  <form action='/create' method="POST">
+  <% end %>
+  <span class="search-type">
+	<h3>Type</h3>
+	<ul>
+	  <li><input type="radio" name="type" value="tweets" <% if @search and @search.type == "tweets" %>checked<% end %> /> Tweets </li>
+	  <li><input type="radio" name="type" value="mentions" <% if @search and @search.type == "mentions" %>checked<% end %> /> Mentions </li>
+	  <li><input type="radio" name="type" value="replies"  <% if @search and @search.type == "replies" %>checked<% end %> /> Replies </li>
+	  <li><input type="radio" name="type" value="search" <% if @search and @search.type == "search" %>checked<% end %>  /> Search </li>
+	</ul>
+  </span>
+  <span class="search-data">
+    <h3 id="search-type">Username</h3>
+	<input type="text" name="name" <% if @search %>value="<%= @search.name %>"<% end %> /><br />
+  </span>
+  <span class="search-refresh">
+    <h3 id="search-refresh">Check Rate:</h3>
+	<select name="refresh_rate">
+	  <option value="86400" <% if @search and @search.refresh_rate == 86400 %>selected<% end %>>Daily</option>
+	  <option value="43200" <% if @search and @search.refresh_rate == 43200 %>selected<% end %>>2x a Day</option>
+	  <option value="21600" <% if @search and @search.refresh_rate == 21600 %>selected<% end %>>4x a Day</option>
+	  <option value="3600" <% if @search and @search.refresh_rate == 3600 %>selected<% end %>>Hourly</option>
+	</select>
+  </span>
+
+  <span class="search-submit">
+	<h3>Save!</h3>
+	<input type="submit" value="go" />
+  </span>
+  </form>
+</div>
+
+<div style="clear:both"></div>
+
+<br/>
+
+<h2>Current Searches</h2>
+
+<ul id="searches">
+	<li class="extra-padding">
+	  <span class="rss-link"><a href="<%= @user.url %>"><img border="0" src="/feed-icon-14x14.png"></a></span>
+	  <span class="search-summary"><a href="<%= @user.url %>">Unified RSS Feed</a></span>
+	  <div style="clear:both">&nbsp;</div>
+	</li>
+
+  <% @searches.each do |search| %>
+	<li>
+	  <span class="rss-link"><a href="<%= search.url %>"><img border="0" src="/feed-icon-14x14.png"></a></span>
+	  <span class="search-summary">search for <% if search.type != "search" %><%= search.type %> of<% end%> <em><%= search.name %></em></span>
+	  <span class="edit-links">
+		<a href="/dashboard/<%= search.id %>">edit</a>
+		<a href="/delete/<%= search.id %>">delete</a>
+	  </span>
+	  <div style="clear:both">&nbsp;</div>
+	</li>
+  <% end %>
+</ul>
+
+
+<script>
+$(document).ready(function() {
+  $("input[name=type]").change(function(){
+    updateSearchType();
+  });
+});
+
+function updateSearchType() {
+
+    var tmpval = $("input[name='type']:checked").val();
+
+    if ( tmpval == "search" ) {
+      $('#search-type').html("Search for:");
+    }
+    else if ( tmpval == "mentions" ) {
+      $('#search-type').html("Mentions of user:");
+    }
+    else if ( tmpval == "replies" ) {
+      $('#search-type').html("Replies to user:");
+    }
+    else if ( tmpval == "tweets" ) {
+      $('#search-type').html("Tweets from user:");
+    }
+}
+
+</script>
