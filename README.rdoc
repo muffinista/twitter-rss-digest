@@ -1,16 +1,25 @@
 == About
 
-WhalePail is a simple app to generate RSS feeds for a variety of
-Twitter data.  You plug in a few parameters, and get back an RSS
-feed, which you can then check whenever you want.  This is handy
-if there's someone or something you want to follow on Twitter, but
-the standard methods of using Twitter aren't working for you.
+WhalePail is a simple app to generate RSS feeds for a variety of Twitter data.  You plug in a few parameters, and get back an RSS feed, which you can then check whenever you want.  This is handy if there's someone or something you want to follow on Twitter, but the standard methods of using Twitter aren't working for you.
+
+The code runs on Sinatra and is pretty basic.  I wrote it to learn about a couple things at once: Sinatra, Twitter's new OAuth Requirments, and the DataMapper library.
+
+== USING
 
 To run the code on your own server, you will need to:
 
-* install the code somewhere
+* install the code and it's prerequisites somewhere
 * setup an app on twitter
 * specify the parameters you need to get OAuth working
 
-More to come...
+=== Required Gems
+* sinatra
+* dm-core
+* twitter_oauth
+* twitter-text
+* builder
+* json
+* md5
 
+== TODO
+* Add an option to get JSON back for use with other apps
