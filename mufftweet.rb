@@ -173,7 +173,7 @@ get '/about' do
 end
 
 get '/code' do
-  erb :code
+  redirect 'http://github.com/muffinista/twitter-rss-digest'
 end
 
 get '/dashboard/?:id?' do
