@@ -42,3 +42,10 @@ You can create a new app here: http://twitter.com/apps/new
 
 == TODO
 * Add an option to get JSON back for use with other apps
+
+
+== LICENSE
+Licensed under MIT http://creativecommons.org/licenses/MIT/
+
+Use it in good health.
+

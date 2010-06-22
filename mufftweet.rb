@@ -172,9 +172,6 @@ get '/about' do
   erb :about
 end
 
-get '/code' do
-  redirect 'http://github.com/muffinista/twitter-rss-digest'
-end
 
 get '/dashboard/?:id?' do
   redirect '/' if @has_user == false
