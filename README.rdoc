@@ -49,3 +49,7 @@ Licensed under MIT http://creativecommons.org/licenses/MIT/
 
 Use it in good health.
 
+
+== THANKS
+Based on sinitter sample app http://github.com/moomerman/sinitter
+
