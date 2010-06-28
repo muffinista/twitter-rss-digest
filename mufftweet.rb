@@ -74,7 +74,7 @@ class Search
 
   def refresh
     # dont refresh too often
-    puts "#{id} #{refreshed_at} > #{Time.now() - refresh_rate}"
+    #puts "#{id} #{refreshed_at} > #{Time.now() - refresh_rate}"
     if refreshed_at != nil and refreshed_at > Time.now() - refresh_rate
       return false
     end
