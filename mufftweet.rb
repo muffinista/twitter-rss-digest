@@ -6,10 +6,10 @@ $KCODE = "U"
 require 'sinatra'
 require 'dm-core'
 require 'twitter_oauth'
-require 'twitter-text'
 require 'builder'
 require 'json'
 require 'md5'
+require 'twitter-text'
 
 configure do
   set :sessions, true
@@ -75,7 +75,7 @@ class Search
   def refresh
     # dont refresh too often
     #puts "#{id} #{refreshed_at} > #{Time.now() - refresh_rate}"
-    if refreshed_at != nil and refreshed_at > Time.now() - refresh_rate
+    if refreshed_at != nil and refreshed_at > DateTime.now() - refresh_rate
       return false
     end
 
@@ -120,6 +120,8 @@ end
 class SearchData
   include DataMapper::Resource
   belongs_to :search
+
+  storage_names[:default] = "search_datum"
 
   property :id, Serial
   property :data, Text
@@ -196,57 +198,59 @@ get '/:user_id/:hash/:id.xml' do
 
   if params[:id] == "all"
     @searches = @user.searches
+    @searches.each do |s|
+      s.refresh
+    end
+
+    @search_data = SearchData.all(:search => Search.all(:user => @user),
+                                  :order => [:tweet_date.desc],
+                                  :limit => 25
+                                  )
+
+
     title = "Whale Pail RSS Feed"
     description = "Whale Pail RSS Feed"
     link = "#{@@config['base_url']}#{@user.url}"
   else
-    @searches = [@user.searches.get(params[:id])]
-    title = "#{@searches.first.type} for #{@searches.first.name}"
-    description = "#{@searches.first.type} for #{@searches.first.name}"
-    link = "#{@@config['base_url']}#{@searches.first.url}"
+    @search = @user.searches.get(params[:id])
+    @search.refresh
+
+    @search_data = @search.search_data.all(:order => [:tweet_date.desc], :limit => 25)
+    title = "#{@search.type} for #{@search.name}"
+    description = "#{@search.type} for #{@search.name}"
+    link = "#{@@config['base_url']}#{@search.url}"
   end
 
   builder do |xml|
     xml.instruct! :xml, :version => '1.0'
-#    xml.instruct! 'xml-stylesheet', {
-#      :href=>'http://feeds.feedburner.com/~d/styles/itemcontent.css',
-#      :type=>'text/css',
-#      :media => 'screen'
-#    }
-
-
-
     xml.rss :version => "2.0" do
       xml.channel do
         xml.title title
         xml.description description
         xml.link link
         
-        @searches.each do |s|
-          s.refresh
-          s.search_data.all(:order => [:tweet_date.desc]).each do |data|
-            summary = ""
-            JSON.parse(data.data).each do |tweet|
-              tmpdate = Time.parse(tweet['created_at'])
+        @search_data.each do |data|
+          summary = ""
+          JSON.parse(data.data).each do |tweet|
+            tmpdate = Time.parse(tweet['created_at'])
               
-              tweet_summary = "#{tmpdate.strftime('%I:%M %p')}"
-              if s.type != "tweets"
-                tweet_summary << " @#{tweet['from_user']}"
-              end
-              tweet_summary << ": #{linkify(tweet['text'])} (<a href='http://twitter.com/#{tweet['from_user']}/status/#{tweet['id']}' target='_new'>view</a>)"
-              tweet_summary = auto_link(tweet_summary)
-              
-              summary << "<li>#{tweet_summary}</li>" # #{tweet.to_json}
+            tweet_summary = tmpdate.strftime('%I:%M %p')
+            if data.search.type != "tweets"
+              tweet_summary << " @#{tweet['from_user']}"
             end
+            tweet_summary << ": #{linkify(tweet['text'])} (<a href='http://twitter.com/#{tweet['from_user']}/status/#{tweet['id']}' target='_new'>view</a>)"
+            tweet_summary = auto_link(tweet_summary)
+              
+            summary << "<li>#{tweet_summary}</li>" # #{tweet.to_json}
+          end
 
 
-            xml.item do
-              xml.title "#{s.type} for #{s.name}: #{data.tweet_date}"
-              xml.link "#{@@config['base_url']}#{s.url}"
-              xml.description "<ul>#{summary}</ul><!-- #{data.data} -->"
-              xml.pubDate Time.parse(data.updated_at.to_s).rfc822
-              xml.guid "#{@@config['base_url']}#{s.url}/#{data.id}"
-            end
+          xml.item do
+            xml.title "#{data.search.type} for #{data.search.name}: #{data.tweet_date}"
+            xml.link "#{@@config['base_url']}#{data.search.url}"
+            xml.description "<ul>#{summary}</ul><!-- #{data.data} -->"
+            xml.pubDate Time.parse(data.updated_at.to_s).rfc822
+            xml.guid "#{@@config['base_url']}#{data.search.url}/#{data.id}"
           end
         end
       end
@@ -363,6 +367,3 @@ helpers do
     s
   end
 end
-
-
-
