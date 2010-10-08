@@ -75,7 +75,7 @@ class Search
   def refresh
     # dont refresh too often
     #puts "#{id} #{refreshed_at} > #{Time.now() - refresh_rate}"
-    if refreshed_at != nil and refreshed_at > DateTime.now() - refresh_rate
+    if refreshed_at != nil and refreshed_at > Time.now() - refresh_rate
       return false
     end
 
@@ -210,7 +210,7 @@ get '/:user_id/:hash/:id.xml' do
 
     title = "Whale Pail RSS Feed"
     description = "Whale Pail RSS Feed"
-    link = "#{@@config['base_url']}#{@user.url}"
+    link = "#{@@config['base_url']}/#{@user.url}"
   else
     @search = @user.searches.get(params[:id])
     @search.refresh
@@ -218,7 +218,7 @@ get '/:user_id/:hash/:id.xml' do
     @search_data = @search.search_data.all(:order => [:tweet_date.desc], :limit => 25)
     title = "#{@search.type} for #{@search.name}"
     description = "#{@search.type} for #{@search.name}"
-    link = "#{@@config['base_url']}#{@search.url}"
+    link = "#{@@config['base_url']}/#{@search.url}"
   end
 
   builder do |xml|
