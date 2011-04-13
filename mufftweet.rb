@@ -1,15 +1,7 @@
 #!/usr/bin/env ruby
+$KCODE = "UTF8"
+
 require 'rubygems'
-
-$KCODE = "U"
-
-require 'sinatra'
-require 'dm-core'
-require 'twitter_oauth'
-require 'builder'
-require 'json'
-require 'md5'
-require 'twitter-text'
 
 configure do
   set :sessions, true
@@ -47,9 +39,10 @@ class Search
   include DataMapper::Resource
 
   belongs_to :user
-  has n, :search_data
+  has n, :tweets
 
   property :id, Serial
+  property :max_id, Integer, :min => -9223372036854775807, :max => 9223372036854775807
   property :name, String
   property :type, String
   property :refresh_rate, Integer, :default => 3600*1  # default to six hours for now
@@ -72,298 +65,309 @@ class Search
   end
 
 
-  def refresh
+  def refresh(force=false)
+    #
     # dont refresh too often
-    #puts "#{id} #{refreshed_at} > #{Time.now() - refresh_rate}"
-    if refreshed_at != nil and refreshed_at > Time.now() - refresh_rate
+    #
+    if force == false and refreshed_at != nil and refreshed_at > Time.now() - refresh_rate
       return false
     end
-
-    data = {}
-
-    tweets = case type
-             when "search" : client.search(name)
-             when "mentions" : client.search("@#{name}")
-             when "replies" : client.search("to:#{name}")
-             when "tweets" : client.search("from:#{name}")
+    
+    params = case type
+             when "search" then name
+             when "mentions" then "@#{name}"
+             when "replies" then "to:#{name}"
+             when "tweets" then "from:#{name}"
              end
 
-    tweets["results"].each do |t|
-      tmpdate = Date.parse(t['created_at'])
-      data[tmpdate] ||= []
-      data[tmpdate] << t
-    end
-
-    data.each do |date, tweets|
-      tmp = search_data.first({ :tweet_date => date })
-      if tmp == nil
-        tmp = search_data.create({
-                                   :created_at => Time.now,
-                                   :updated_at => Time.now,
-                                   :tweet_date => date,
-                                   :data => tweets.to_json
-                                 })
-      else
-        tmp.update({
-                     :data => tweets.to_json
-                   })
+    data = client.search(params, {
+                           :since_id => self.max_id.nil? ? 0 : self.max_id
+                         })
+    
+    data["results"].each do |t|
+      tmp = tweets.first({ :id => t["id_str"] })
+      if tmp.nil?
+        tmpdate = Date.parse(t['created_at'])
+        opts = {
+          :id => t["id_str"],
+          :created_at => tmpdate,
+          :loaded_at => Time.now,
+          :data => t.to_json
+        }
+        [:profile_image_url, :from_user, :from_user_id, :to_user, :to_user_id,
+         :text, :iso_language_code, :source].each do |key|
+          opts[key] = t[key.to_s]
+        end
+        
+        tmp = tweets.create(opts)
       end
     end
 
-    update(
-           :refreshed_at => Time.now
-           )
+    self.max_id = data["max_id"]
+    self.refreshed_at = Time.now
+    self.save
+
     true
   end
 end
 
-class SearchData
+
+class Tweet
   include DataMapper::Resource
   belongs_to :search
 
-  storage_names[:default] = "search_datum"
+  property :id, Serial, :min => -9223372036854775807, :max => 9223372036854775807
+  property :profile_image_url, String, :length => 150
+  property :from_user, String
+  property :from_user_id, Integer, :min => -9223372036854775807, :max => 9223372036854775807  
+  property :to_user, String
+  property :to_user_id, Integer, :min => -9223372036854775807, :max => 9223372036854775807  
 
-  property :id, Serial
+  # this is so long since any incoming ampersands/etc are escaped
+  property :text, String, :length => 250
+  property :iso_language_code, String, :length => 5
+  property :source, String, :length => 250
+
   property :data, Text
-  property :tweet_date, Date
+
   property :created_at, DateTime
-  property :updated_at, DateTime
+  property :loaded_at, DateTime  
 end
 
-# Automatically create the tables if they don't exist
-DataMapper.auto_upgrade!
-
-enable :sessions, :logging, :dump_errors
-
-include Twitter::Autolink
-
-
-
-before do
-  if session[:id]
-    @user = User.get(session[:id])
-    @has_user = (@user != nil)
-  else
-    @has_user = false
-  end
-
-  #
-  # regexps for linkify
-  #
-  @generic_URL_regexp = Regexp.new( '(^|[\n ])([\w]+?://[\w]+[^ \"\n\r\t<]*)', Regexp::MULTILINE | Regexp::IGNORECASE )
-  @starts_with_www_regexp = Regexp.new( '(^|[\n ])((www)\.[^ \"\t\n\r<]*)', Regexp::MULTILINE | Regexp::IGNORECASE )
-  @starts_with_ftp_regexp = Regexp.new( '(^|[\n ])((ftp)\.[^ \"\t\n\r<]*)', Regexp::MULTILINE | Regexp::IGNORECASE )
-  @email_regexp = Regexp.new( '(^|[\n ])([a-z0-9&\-_\.]+?)@([\w\-]+\.([\w\-\.]+\.)*[\w]+)', Regexp::IGNORECASE )
-
+class MuffTweet < Sinatra::Base
+  # globally across all models
+  DataMapper::Model.raise_on_save_failure = true 
   
-  @client = TwitterOAuth::Client.new(
-                                     :consumer_key => ENV['CONSUMER_KEY'] || @@config['consumer_key'],
-                                     :consumer_secret => ENV['CONSUMER_SECRET'] || @@config['consumer_secret'],
-                                     :token => @user.nil? ? nil : @user.token,
-                                     :secret => @user.nil? ? nil : @user.secret
-                                     )
-  @rate_limit_status = @client.rate_limit_status
-end
+  # Automatically create the tables if they don't exist
+  DataMapper.auto_upgrade!
 
-get '/' do
-  redirect '/dashboard' if @has_user == true
-  erb :about
-end
+  enable :sessions, :logging, :dump_errors
 
-get '/about' do
-  erb :about
-end
+  include Twitter::Autolink
 
-
-get '/dashboard/?:id?' do
-  redirect '/' if @has_user == false
-  @searches = @user.searches
-
-  if params[:id]
-    @search = @searches.get(params[:id])  
-  end
-
-  erb :dashboard
-end
-
-
-get '/:user_id/:hash/:id.xml' do
-  content_type 'application/xml', :charset => 'utf-8'
-
-  @user = User.get(params[:user_id])
-
-  if @user.nil? or params[:hash] != @user.url_hash
-    throw :halt, [404, "Not found"]
-  end
-
-  if params[:id] == "all"
-    @searches = @user.searches
-    @searches.each do |s|
-      s.refresh
+  before do
+    if session[:id]
+      @user = User.get(session[:id])
+      @has_user = (@user != nil)
+    else
+      @has_user = false
     end
 
-    @search_data = SearchData.all(:search => Search.all(:user => @user),
-                                  :order => [:tweet_date.desc],
-                                  :limit => 25
-                                  )
+    #
+    # regexps for linkify
+    #
+    @generic_URL_regexp = Regexp.new( '(^|[\n ])([\w]+?://[\w]+[^ \"\n\r\t<]*)', Regexp::MULTILINE | Regexp::IGNORECASE )
+    @starts_with_www_regexp = Regexp.new( '(^|[\n ])((www)\.[^ \"\t\n\r<]*)', Regexp::MULTILINE | Regexp::IGNORECASE )
+    @starts_with_ftp_regexp = Regexp.new( '(^|[\n ])((ftp)\.[^ \"\t\n\r<]*)', Regexp::MULTILINE | Regexp::IGNORECASE )
+    @email_regexp = Regexp.new( '(^|[\n ])([a-z0-9&\-_\.]+?)@([\w\-]+\.([\w\-\.]+\.)*[\w]+)', Regexp::IGNORECASE )
 
-
-    title = "Whale Pail RSS Feed"
-    description = "Whale Pail RSS Feed"
-    link = "#{@@config['base_url']}/#{@user.url}"
-  else
-    @search = @user.searches.get(params[:id])
-    @search.refresh
-
-    @search_data = @search.search_data.all(:order => [:tweet_date.desc], :limit => 25)
-    title = "#{@search.type} for #{@search.name}"
-    description = "#{@search.type} for #{@search.name}"
-    link = "#{@@config['base_url']}/#{@search.url}"
+    
+    @client = TwitterOAuth::Client.new(
+                                       :consumer_key => ENV['CONSUMER_KEY'] || @@config['consumer_key'],
+                                       :consumer_secret => ENV['CONSUMER_SECRET'] || @@config['consumer_secret'],
+                                       :token => @user.nil? ? nil : @user.token,
+                                       :secret => @user.nil? ? nil : @user.secret
+                                       )
+    @rate_limit_status = @client.rate_limit_status
   end
 
-  builder do |xml|
-    xml.instruct! :xml, :version => '1.0'
-    xml.rss :version => "2.0" do
-      xml.channel do
-        xml.title title
-        xml.description description
-        xml.link link
-        
-        @search_data.each do |data|
-          summary = ""
-          JSON.parse(data.data).each do |tweet|
-            tmpdate = Time.parse(tweet['created_at'])
-              
-            tweet_summary = tmpdate.strftime('%I:%M %p')
-            if data.search.type != "tweets"
-              tweet_summary << " @#{tweet['from_user']}"
+  get '/' do
+    redirect '/dashboard' if @has_user == true
+    erb :about
+  end
+
+  get '/about' do
+    erb :about
+  end
+
+
+  get '/dashboard/?:id?' do
+    redirect '/' if @has_user == false
+    @searches = @user.searches
+
+    if params[:id]
+      @search = @searches.get(params[:id])  
+    end
+
+    erb :dashboard
+  end
+
+
+  get '/:user_id/:hash/:id.xml' do
+    content_type 'application/xml', :charset => 'utf-8'
+
+    @user = User.get(params[:user_id])
+
+    if @user.nil? or params[:hash] != @user.url_hash
+      throw :halt, [404, "Not found"]
+    end
+
+    if params[:id] == "all"
+      @searches = @user.searches
+      @searches.each do |s|
+        s.refresh
+      end
+
+      tweets = Tweets.all(:search => Search.all(:user => @user),
+                          :order => [:tweet_date.desc],
+                          :limit => 25
+                          )
+
+
+      title = "Whale Pail RSS Feed"
+      description = "Whale Pail RSS Feed"
+      link = "#{@@config['base_url']}/#{@user.url}"
+    else
+      @search = @user.searches.get(params[:id])
+      @search.refresh
+
+      tweets = @search.tweets.all(:created_at.gt => Date.today - 2,
+                                  :order => [:created_at.asc])
+      title = "#{@search.type} for #{@search.name}"
+      description = "#{@search.type} for #{@search.name}"
+      link = "#{@@config['base_url']}/#{@search.url}"
+    end
+
+    # split tweets up by day
+    @search_data = tweets.group_by { |t|
+      t.created_at.to_date
+    }
+    
+    builder do |xml|
+      xml.instruct! :xml, :version => '1.0'
+      xml.rss :version => "2.0" do
+        xml.channel do
+          xml.title title
+          xml.description description
+          xml.link link
+          
+          @search_data.each do |date, data|
+            search = data.first.search
+            summary = data.collect do |tweet|
+              tweet_summary = auto_link([
+                                         tweet.created_at.strftime('%I:%M %p'),
+                                         tweet.search.type != "tweets" ? "@#{tweet.from_user}" : "",
+                                         ": #{linkify(tweet.text)} (<a href='http://twitter.com/#{tweet.from_user}/status/#{tweet.id}' target='_new'>view</a>)"
+                                        ].join(""))
+            end.map { |t| "<li>#{t}</li>"}
+
+            xml.item do
+              xml.title "#{search.type} for #{search.name}: #{date}"
+              xml.link "#{@@config['base_url']}#{search.url}"
+              xml.description "<ul>#{summary}</ul>" #<!-- #{data.data} -->"
+              xml.pubDate Time.parse(date.to_s).rfc822
+              xml.guid "#{@@config['base_url']}#{search.url}/#{data.first.id}"
             end
-            tweet_summary << ": #{linkify(tweet['text'])} (<a href='http://twitter.com/#{tweet['from_user']}/status/#{tweet['id']}' target='_new'>view</a>)"
-            tweet_summary = auto_link(tweet_summary)
-              
-            summary << "<li>#{tweet_summary}</li>" # #{tweet.to_json}
-          end
-
-
-          xml.item do
-            xml.title "#{data.search.type} for #{data.search.name}: #{data.tweet_date}"
-            xml.link "#{@@config['base_url']}#{data.search.url}"
-            xml.description "<ul>#{summary}</ul><!-- #{data.data} -->"
-            xml.pubDate Time.parse(data.updated_at.to_s).rfc822
-            xml.guid "#{@@config['base_url']}#{data.search.url}/#{data.id}"
           end
         end
       end
     end
   end
-end
 
-post '/create' do
-  @user.searches.create({
-                          :created_at => Time.now,
-                          :updated_at => Time.now
-                        }.merge(params)
-                        )
-  redirect '/dashboard'
-end
-
-post '/update' do
-  @search = @user.searches.get(params[:id]).update({
-                          :updated_at => Time.now
-                        }.merge(params)
-                        )
-  redirect '/dashboard'
-end
-
-get '/delete/:id' do
-  begin
-    @user.searches.get(params[:id]).destroy!
-  rescue
-  end
-  redirect '/dashboard'
-end
-
-
-# store the request tokens and send to Twitter
-get '/connect' do
-  request_token = @client.request_token(
-    :oauth_callback => ENV['CALLBACK_URL'] || @@config['callback_url']
-  )
-  session[:request_token] = request_token.token
-  session[:request_token_secret] = request_token.secret
-  redirect request_token.authorize_url.gsub('authorize', 'authenticate') 
-end
-
-# auth URL is called by twitter after the user has accepted the application
-# this is configured on the Twitter application settings page
-get '/auth' do
-  # Exchange the request token for an access token.
-  
-  begin
-    @access_token = @client.authorize(
-                                      session[:request_token],
-                                      session[:request_token_secret],
-                                      :oauth_verifier => params[:oauth_verifier]
-                                      )
-  rescue OAuth::Unauthorized
+  post '/create' do
+    @user.searches.create({
+                            :created_at => Time.now,
+                            :updated_at => Time.now
+                          }.merge(params)
+                          )
+    redirect '/dashboard'
   end
 
-  session[:request_token] = nil
-  session[:request_token_secret] = nil
-  
-  if @client.authorized?
+  post '/update' do
+    @search = @user.searches.get(params[:id]).update({
+                                                       :updated_at => Time.now
+                                                     }.merge(params)
+                                                     )
+    redirect '/dashboard'
+  end
+
+  get '/delete/:id' do
+    begin
+      @user.searches.get(params[:id]).destroy!
+    rescue
+    end
+    redirect '/dashboard'
+  end
+
+
+  # store the request tokens and send to Twitter
+  get '/connect' do
+    request_token = @client.request_token(
+                                          :oauth_callback => ENV['CALLBACK_URL'] || @@config['callback_url']
+                                          )
+    session[:request_token] = request_token.token
+    session[:request_token_secret] = request_token.secret
+    redirect request_token.authorize_url.gsub('authorize', 'authenticate') 
+  end
+
+  # auth URL is called by twitter after the user has accepted the application
+  # this is configured on the Twitter application settings page
+  get '/auth' do
+    # Exchange the request token for an access token.
+    
+    begin
+      @access_token = @client.authorize(
+                                        session[:request_token],
+                                        session[:request_token_secret],
+                                        :oauth_verifier => params[:oauth_verifier]
+                                        )
+    rescue OAuth::Unauthorized
+    end
+
+    session[:request_token] = nil
+    session[:request_token_secret] = nil
+    
+    if @client.authorized?
       # Storing the access tokens so we don't have to go back to Twitter again
       # in this session.  In a larger app you would probably persist these details somewhere.
 
-    @user = User.first({
-                        :token => @access_token.token,
-                        :secret => @access_token.secret
-                       })
+      @user = User.first({
+                           :token => @access_token.token,
+                           :secret => @access_token.secret
+                         })
 
-    if @user == nil
-      @user = User.create(
-                          :token => @access_token.token,
-                          :secret => @access_token.secret,
-                          :created_at => Time.now,
-                          :updated_at => Time.now
-                          )
+      if @user == nil
+        @user = User.create(
+                            :token => @access_token.token,
+                            :secret => @access_token.secret,
+                            :created_at => Time.now,
+                            :updated_at => Time.now
+                            )
+      end
+
+      session[:id] = @user.id
+      
+      redirect '/dashboard'
+    else
+      redirect '/'
     end
+  end
 
-#    session[:access_token] = @access_token.token
-#    session[:secret_token] = @access_token.secret
-#    session[:user] = true
-    session[:id] = @user.id
-    
-    redirect '/dashboard'
-  else
+  get '/disconnect' do
+    session[:id] = nil
+    session[:request_token] = nil
+    session[:request_token_secret] = nil
+    session[:access_token] = nil
+    session[:secret_token] = nil
     redirect '/'
   end
-end
-
-get '/disconnect' do
-  session[:id] = nil
-  session[:request_token] = nil
-  session[:request_token_secret] = nil
-  session[:access_token] = nil
-  session[:secret_token] = nil
-  redirect '/'
-end
 
 
-#
-# 
-#
-helpers do 
-  def partial(name, options={})
-    erb("_#{name.to_s}".to_sym, options.merge(:layout => false))
-  end
+  #
+  # 
+  #
+  helpers do 
+    def partial(name, options={})
+      erb("_#{name.to_s}".to_sym, options.merge(:layout => false))
+    end
 
-  def linkify( text )
-    s = text.to_s
-    s.gsub!( @generic_URL_regexp, '\1<a href="\2">\2</a>' )
-    s.gsub!( @starts_with_www_regexp, '\1<a href="http://\2">\2</a>' )
-    s.gsub!( @starts_with_ftp_regexp, '\1<a href="ftp://\2">\2</a>' )
-    s.gsub!( @email_regexp, '\1<a href="mailto:\2@\3">\2@\3</a>' )
-    s
+    def linkify( text )
+      s = text.to_s
+      s.gsub!( @generic_URL_regexp, '\1<a href="\2">\2</a>' )
+      s.gsub!( @starts_with_www_regexp, '\1<a href="http://\2">\2</a>' )
+      s.gsub!( @starts_with_ftp_regexp, '\1<a href="ftp://\2">\2</a>' )
+      s.gsub!( @email_regexp, '\1<a href="mailto:\2@\3">\2@\3</a>' )
+      s
+    end
   end
 end
