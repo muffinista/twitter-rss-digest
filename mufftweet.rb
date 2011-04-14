@@ -40,7 +40,7 @@ class Search
 
   belongs_to :user
   has n, :tweets
-
+  
   property :id, Serial
   property :max_id, Integer, :min => -9223372036854775807, :max => 9223372036854775807
   property :name, String
@@ -85,22 +85,7 @@ class Search
                          })
     
     data["results"].each do |t|
-      tmp = tweets.first({ :id => t["id_str"] })
-      if tmp.nil?
-        tmpdate = Date.parse(t['created_at'])
-        opts = {
-          :id => t["id_str"],
-          :created_at => tmpdate,
-          :loaded_at => Time.now,
-          :data => t.to_json
-        }
-        [:profile_image_url, :from_user, :from_user_id, :to_user, :to_user_id,
-         :text, :iso_language_code, :source].each do |key|
-          opts[key] = t[key.to_s]
-        end
-        
-        tmp = tweets.create(opts)
-      end
+      create_tweet(t)
     end
 
     self.max_id = data["max_id"]
@@ -109,14 +94,35 @@ class Search
 
     true
   end
+
+  def create_tweet(t)
+    id = t.has_key?("id_str") ? t["id_str"] : t["id"]
+    tmp = tweets.first({ :id => id })
+    if tmp.nil?
+      tmpdate = Date.parse(t['created_at'])
+      opts = {
+        :id => id,
+        :created_at => tmpdate,
+        :loaded_at => Time.now,
+        :data => t.to_json
+      }
+      [:profile_image_url, :from_user, :from_user_id, :to_user, :to_user_id,
+       :text, :iso_language_code, :source].each do |key|
+        opts[key] = t[key.to_s]
+      end
+        
+      tmp = tweets.create(opts)
+    end
+  end
+
 end
 
 
 class Tweet
   include DataMapper::Resource
-  belongs_to :search
+  belongs_to :search, :key => true
 
-  property :id, Serial, :min => -9223372036854775807, :max => 9223372036854775807
+  property :id, Integer, :min => -9223372036854775807, :max => 9223372036854775807, :key => true
   property :profile_image_url, String, :length => 150
   property :from_user, String
   property :from_user_id, Integer, :min => -9223372036854775807, :max => 9223372036854775807  
