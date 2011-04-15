@@ -200,7 +200,6 @@ class MuffTweet < Sinatra::Base
     erb :dashboard
   end
 
-
   get '/:user_id/:hash/:id.xml' do
     content_type 'application/xml', :charset => 'utf-8'
     
@@ -227,6 +226,11 @@ class MuffTweet < Sinatra::Base
       link = "#{@@config['base_url']}/#{@user.url}"
     else
       @search = @user.searches.get(params[:id])
+
+      if @search.nil?
+        throw :halt, [404, "Not found"]
+      end
+      
       @search.refresh
 
       tweets = @search.tweets.all(:created_at.gt => Date.today - 2,
