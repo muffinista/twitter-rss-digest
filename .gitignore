@@ -3,4 +3,4 @@
 \#*#
 \.#*
 config.yml
-log/*
+log/*.log
