@@ -260,7 +260,7 @@ class MuffTweet < Sinatra::Base
                                          tweet.created_at.strftime('%I:%M %p'),
                                          tweet.search.type != "tweets" ? "@#{tweet.from_user}" : "",
                                          ": #{linkify(tweet.text)} (<a href='http://twitter.com/#{tweet.from_user}/status/#{tweet.id}' target='_new'>view</a>)"
-                                        ].join(""))
+                                        ].join(" "))
             end.map { |t| "<li>#{t}</li>"}
 
             xml.item do
