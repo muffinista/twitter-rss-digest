@@ -214,8 +214,8 @@ class MuffTweet < Sinatra::Base
         s.refresh
       end
 
-      tweets = Tweets.all(:search => Search.all(:user => @user),
-                          :order => [:tweet_date.desc],
+      tweets = Tweet.all(:search => Search.all(:user => @user),
+                          :order => [:created_at.desc],
                           :limit => 25
                           )
 
