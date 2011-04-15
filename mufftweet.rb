@@ -2,6 +2,7 @@
 $KCODE = "UTF8"
 
 require 'rubygems'
+require 'time'
 
 configure do
   set :sessions, true
@@ -99,7 +100,7 @@ class Search
     id = t.has_key?("id_str") ? t["id_str"] : t["id"]
     tmp = tweets.first({ :id => id })
     if tmp.nil?
-      tmpdate = Date.parse(t['created_at'])
+      tmpdate = Time.parse(t['created_at'])
       opts = {
         :id => id,
         :created_at => tmpdate,
@@ -150,7 +151,8 @@ class MuffTweet < Sinatra::Base
   enable :sessions, :logging, :dump_errors
 
   include Twitter::Autolink
-
+  
+  
   before do
     if session[:id]
       @user = User.get(session[:id])
@@ -201,7 +203,7 @@ class MuffTweet < Sinatra::Base
 
   get '/:user_id/:hash/:id.xml' do
     content_type 'application/xml', :charset => 'utf-8'
-
+    
     @user = User.get(params[:user_id])
 
     if @user.nil? or params[:hash] != @user.url_hash
