@@ -32,6 +32,7 @@ You can create a new app here: http://twitter.com/apps/new
 
 
 == TODO
+* Add caching
 * Add an option to get JSON back for use with other apps
 * Add some JS widgets to display similar to Twitter's widgets
 * Consider a version that doesn't require authorization -- we don't actually need to use OAuth to do searches, it's strictly to manage users, but that could be handled with a cookie/session key, or traditional registration.
