@@ -275,7 +275,7 @@ class MuffTweet < Sinatra::Base
         xml.link "#{@@config['base_url']}#{search.url}"
         xml.description "<ul>#{summary}</ul>"
         xml.pubDate Time.parse(tweets.last.created_at.to_s).rfc822
-        xml.guid "#{@@config['base_url']}#{search.url}/#{tweets.last.id}"
+        xml.guid "#{@@config['base_url']}#{search.url}/#{tweets.first.id}"
       end
     end
   end
