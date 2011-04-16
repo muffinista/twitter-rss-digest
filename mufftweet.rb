@@ -211,39 +211,29 @@ class MuffTweet < Sinatra::Base
 
     if params[:id] == "all"
       @searches = @user.searches
+      
       @searches.each do |s|
         s.refresh
       end
-
-      tweets = Tweet.all(:search => Search.all(:user => @user),
-                          :order => [:created_at.desc],
-                          :limit => 25
-                          )
-
 
       title = "Whale Pail RSS Feed"
       description = "Whale Pail RSS Feed"
       link = "#{@@config['base_url']}/#{@user.url}"
     else
       @search = @user.searches.get(params[:id])
-
+      
       if @search.nil?
         throw :halt, [404, "Not found"]
       end
       
       @search.refresh
-
-      tweets = @search.tweets.all(:created_at.gt => Date.today - 2,
-                                  :order => [:created_at.asc])
+      @searches = [@search]
+          
       title = "#{@search.type} for #{@search.name}"
       description = "#{@search.type} for #{@search.name}"
       link = "#{@@config['base_url']}/#{@search.url}"
     end
 
-    # split tweets up by day
-    @search_data = tweets.group_by { |t|
-      t.created_at.to_date
-    }
     
     builder do |xml|
       xml.instruct! :xml, :version => '1.0'
@@ -252,30 +242,45 @@ class MuffTweet < Sinatra::Base
           xml.title title
           xml.description description
           xml.link link
-          
-          @search_data.each do |date, data|
-            search = data.first.search
-            summary = data.collect do |tweet|
-              tweet_summary = auto_link([
-                                         tweet.created_at.strftime('%I:%M %p'),
-                                         tweet.search.type != "tweets" ? "@#{tweet.from_user}" : "",
-                                         ": #{linkify(tweet.text)} (<a href='http://twitter.com/#{tweet.from_user}/status/#{tweet.id}' target='_new'>view</a>)"
-                                        ].join(" "))
-            end.map { |t| "<li>#{t}</li>"}
+ 
+          @searches.each do |search|
+            tweets = search.tweets.all(:created_at.gt => Date.today - 7,
+                                       :order => [:created_at.asc])
+            
+            add_feed_entries(xml, search, tweets)
 
-            xml.item do
-              xml.title "#{search.type} for #{search.name}: #{date}"
-              xml.link "#{@@config['base_url']}#{search.url}"
-              xml.description "<ul>#{summary}</ul>" #<!-- #{data.data} -->"
-              xml.pubDate Time.parse(date.to_s).rfc822
-              xml.guid "#{@@config['base_url']}#{search.url}/#{data.first.id}"
-            end
           end
         end
       end
     end
   end
 
+  def add_feed_entries(xml, search, tweets)
+    # split tweets up by day
+    search_data = tweets.group_by { |t|
+      t.created_at.to_date
+    }
+    
+    search_data.each do |date, tweets|
+      summary = tweets.collect do |tweet|
+        tweet_summary = auto_link([
+                                   tweet.created_at.strftime('%I:%M %p'),
+                                   tweet.search.type != "tweets" ? "@#{tweet.from_user}" : "",
+                                   ": #{linkify(tweet.text)} (<a href='http://twitter.com/#{tweet.from_user}/status/#{tweet.id}' target='_new'>view</a>)"
+                                  ].join(" "))
+      end.map { |t| "<li>#{t}}</li>"}
+      
+      xml.item do
+        xml.title "#{search.type} for #{search.name}: #{date}"
+        xml.link "#{@@config['base_url']}#{search.url}"
+        xml.description "<ul>#{summary}</ul>"
+        xml.pubDate Time.parse(date.to_s).rfc822
+        xml.guid "#{@@config['base_url']}#{search.url}/#{tweets.first.id}"
+      end
+    end
+  end
+
+  
   post '/create' do
     @user.searches.create({
                             :created_at => Time.now,
@@ -369,6 +374,7 @@ class MuffTweet < Sinatra::Base
   # 
   #
   helpers do 
+    
     def partial(name, options={})
       erb("_#{name.to_s}".to_sym, options.merge(:layout => false))
     end
