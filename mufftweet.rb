@@ -73,6 +73,8 @@ class Search
     if force == false and refreshed_at != nil and refreshed_at > Time.now() - refresh_rate
       return false
     end
+
+    old_max_id = self.max_id
     
     params = case type
              when "search" then name
@@ -93,7 +95,7 @@ class Search
     self.refreshed_at = Time.now
     self.save
 
-    true
+    self.max_id != old_max_id
   end
 
   def create_tweet(t)
@@ -141,6 +143,74 @@ class Tweet
   property :loaded_at, DateTime  
 end
 
+class FeedBuilder
+  include Twitter::Autolink
+  def initialize
+    @builder = Builder::XmlMarkup.new
+    #
+    # regexps for linkify
+    #
+    @generic_URL_regexp = Regexp.new( '(^|[\n ])([\w]+?://[\w]+[^ \"\n\r\t<]*)', Regexp::MULTILINE | Regexp::IGNORECASE )
+    @starts_with_www_regexp = Regexp.new( '(^|[\n ])((www)\.[^ \"\t\n\r<]*)', Regexp::MULTILINE | Regexp::IGNORECASE )
+    @starts_with_ftp_regexp = Regexp.new( '(^|[\n ])((ftp)\.[^ \"\t\n\r<]*)', Regexp::MULTILINE | Regexp::IGNORECASE )
+    @email_regexp = Regexp.new( '(^|[\n ])([a-z0-9&\-_\.]+?)@([\w\-]+\.([\w\-\.]+\.)*[\w]+)', Regexp::IGNORECASE )
+  end
+  
+  def build(params)
+
+    @builder.instruct! :xml, :version => '1.0'
+    @builder.rss :version => "2.0" do |xml|
+      xml.channel do
+        xml.title params[:title]
+        xml.description params[:description]
+        xml.link params[:link]
+ 
+        params[:searches].each do |search|
+          # This runs a little faster since it doesn't pull all the tweets for all the searches at once
+          tweets = Tweet.all(:search => search,
+                             :created_at.gt => Date.today - 7,
+                             :order => [:created_at.asc])
+          add_feed_entries(@builder, search, tweets)
+        end
+      end
+    end
+  end
+
+  def linkify( text )
+    s = text.to_s
+    s.gsub!( @generic_URL_regexp, '\1<a href="\2">\2</a>' )
+    s.gsub!( @starts_with_www_regexp, '\1<a href="http://\2">\2</a>' )
+    s.gsub!( @starts_with_ftp_regexp, '\1<a href="ftp://\2">\2</a>' )
+    s.gsub!( @email_regexp, '\1<a href="mailto:\2@\3">\2@\3</a>' )
+    s
+  end
+  
+  def add_feed_entries(xml, search, tweets)
+    # split tweets up by day
+    search_data = tweets.group_by { |t|
+      t.created_at.to_date
+    }
+    
+    search_data.each do |date, tweets|
+      summary = tweets.collect do |tweet|
+        tweet_summary = auto_link([
+                                   tweet.created_at.strftime('%I:%M %p'),
+                                   tweet.search.type != "tweets" ? "@#{tweet.from_user}" : "",
+                                   ": #{linkify(tweet.text)} (<a href='http://twitter.com/#{tweet.from_user}/status/#{tweet.id}' target='_new'>view</a>)"
+                                  ].join(" "))
+      end.map { |t| "<li>#{t}</li>"}
+      
+      xml.item do
+        xml.title "#{search.type} for #{search.name}: #{date}"
+        xml.link "#{@@config['base_url']}#{search.url}"
+        xml.description "<ul>#{summary}</ul>"
+        xml.pubDate Time.parse(tweets.last.created_at.to_s).rfc822
+        xml.guid "#{@@config['base_url']}#{search.url}/#{tweets.first.id}"
+      end
+    end
+  end
+end
+
 class MuffTweet < Sinatra::Base
   # globally across all models
   DataMapper::Model.raise_on_save_failure = true 
@@ -149,8 +219,6 @@ class MuffTweet < Sinatra::Base
   DataMapper.auto_upgrade!
 
   enable :sessions, :logging, :dump_errors
-
-  include Twitter::Autolink
   
   
   before do
@@ -160,15 +228,6 @@ class MuffTweet < Sinatra::Base
     else
       @has_user = false
     end
-
-    #
-    # regexps for linkify
-    #
-    @generic_URL_regexp = Regexp.new( '(^|[\n ])([\w]+?://[\w]+[^ \"\n\r\t<]*)', Regexp::MULTILINE | Regexp::IGNORECASE )
-    @starts_with_www_regexp = Regexp.new( '(^|[\n ])((www)\.[^ \"\t\n\r<]*)', Regexp::MULTILINE | Regexp::IGNORECASE )
-    @starts_with_ftp_regexp = Regexp.new( '(^|[\n ])((ftp)\.[^ \"\t\n\r<]*)', Regexp::MULTILINE | Regexp::IGNORECASE )
-    @email_regexp = Regexp.new( '(^|[\n ])([a-z0-9&\-_\.]+?)@([\w\-]+\.([\w\-\.]+\.)*[\w]+)', Regexp::IGNORECASE )
-
     
     @client = TwitterOAuth::Client.new(
                                        :consumer_key => ENV['CONSUMER_KEY'] || @@config['consumer_key'],
@@ -209,79 +268,36 @@ class MuffTweet < Sinatra::Base
       throw :halt, [404, "Not found"]
     end
 
+    fb = FeedBuilder.new
+    
     if params[:id] == "all"
       @searches = @user.searches
-      
       @searches.each do |s|
         s.refresh
       end
 
-      title = "Whale Pail RSS Feed"
-      description = "Whale Pail RSS Feed"
-      link = "#{@@config['base_url']}/#{@user.url}"
+      result = fb.build(
+                        :title => "Whale Pail RSS Feed",
+                        :description => "Whale Pail RSS Feed",
+                        :link => "#{@@config['base_url']}/#{@user.url}",
+                        :searches => @searches
+                        )
     else
-      @search = @user.searches.get(params[:id])
-      
+      @search = @user.searches.get(params[:id])     
       if @search.nil?
         throw :halt, [404, "Not found"]
       end
       
       @search.refresh
-      @searches = [@search]
-          
-      title = "#{@search.type} for #{@search.name}"
-      description = "#{@search.type} for #{@search.name}"
-      link = "#{@@config['base_url']}/#{@search.url}"
-    end
 
-    
-    builder do |xml|
-      xml.instruct! :xml, :version => '1.0'
-      xml.rss :version => "2.0" do
-        xml.channel do
-          xml.title title
-          xml.description description
-          xml.link link
- 
-          @searches.each do |search|
-            # This runs a little faster since it doesn't pull all the tweets for all the searches at once
-            tweets = Tweet.all(:search => search,
-                               :created_at.gt => Date.today - 7,
-                               :order => [:created_at.asc])
-            #            tweets = search.tweets(:created_at.gt => Date.today - 7,
-            #                                       :order => [:created_at.asc])
-            
-            add_feed_entries(xml, search, tweets)
-
-          end
-        end
-      end
+      result = fb.build(
+                        :title => "#{@search.type} for #{@search.name}",
+                        :description => "#{@search.type} for #{@search.name}",
+                        :link => "#{@@config['base_url']}/#{@search.url}",
+                        :searches => [@search]
+                        )
     end
-  end
-
-  def add_feed_entries(xml, search, tweets)
-    # split tweets up by day
-    search_data = tweets.group_by { |t|
-      t.created_at.to_date
-    }
-    
-    search_data.each do |date, tweets|
-      summary = tweets.collect do |tweet|
-        tweet_summary = auto_link([
-                                   tweet.created_at.strftime('%I:%M %p'),
-                                   tweet.search.type != "tweets" ? "@#{tweet.from_user}" : "",
-                                   ": #{linkify(tweet.text)} (<a href='http://twitter.com/#{tweet.from_user}/status/#{tweet.id}' target='_new'>view</a>)"
-                                  ].join(" "))
-      end.map { |t| "<li>#{t}</li>"}
-      
-      xml.item do
-        xml.title "#{search.type} for #{search.name}: #{date}"
-        xml.link "#{@@config['base_url']}#{search.url}"
-        xml.description "<ul>#{summary}</ul>"
-        xml.pubDate Time.parse(tweets.last.created_at.to_s).rfc822
-        xml.guid "#{@@config['base_url']}#{search.url}/#{tweets.first.id}"
-      end
-    end
+    result
   end
 
   
@@ -383,13 +399,5 @@ class MuffTweet < Sinatra::Base
       erb("_#{name.to_s}".to_sym, options.merge(:layout => false))
     end
 
-    def linkify( text )
-      s = text.to_s
-      s.gsub!( @generic_URL_regexp, '\1<a href="\2">\2</a>' )
-      s.gsub!( @starts_with_www_regexp, '\1<a href="http://\2">\2</a>' )
-      s.gsub!( @starts_with_ftp_regexp, '\1<a href="ftp://\2">\2</a>' )
-      s.gsub!( @email_regexp, '\1<a href="mailto:\2@\3">\2@\3</a>' )
-      s
-    end
   end
 end
