@@ -244,8 +244,12 @@ class MuffTweet < Sinatra::Base
           xml.link link
  
           @searches.each do |search|
-            tweets = search.tweets.all(:created_at.gt => Date.today - 7,
-                                       :order => [:created_at.asc])
+            # This runs a little faster since it doesn't pull all the tweets for all the searches at once
+            tweets = Tweet.all(:search => search,
+                               :created_at.gt => Date.today - 7,
+                               :order => [:created_at.asc])
+            #            tweets = search.tweets(:created_at.gt => Date.today - 7,
+            #                                       :order => [:created_at.asc])
             
             add_feed_entries(xml, search, tweets)
 
