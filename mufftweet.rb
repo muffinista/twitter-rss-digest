@@ -168,7 +168,8 @@ class FeedBuilder
         params[:searches].each do |search|
           # This runs a little faster since it doesn't pull all the tweets for all the searches at once
           tweets = Tweet.all(:search => search,
-                             :created_at.gt => Date.today - 7,
+                             :created_at.gt => Date.today - 8,
+                             :created_at.lt => Date.today,
                              :order => [:created_at.asc])
           add_feed_entries(@builder, search, tweets)
         end
